@@ -170,4 +170,76 @@ WHERE rx.npi < 11
 --excluded from the Part D Prescriber PUF"
 
 --PART 2
+--Write a query to get a list of each distinct generic_name on the drug table.
+--Mycode
+SELECT 
+	DISTINCT generic_name
+FROM drug
 
+--PART 3
+--Claude code to utilize the generic drug category csv
+--I was given two options. One altered the original data, but didnt' require 
+--future joins. The other safer option creates a lookup table. I chose the lookup table.
+CREATE TABLE drug_category (
+    generic_name VARCHAR(100) PRIMARY KEY,
+    category     VARCHAR(100)
+);
+
+--Verification 1 - successful
+SELECT COUNT (*)
+FROM drug_category
+
+--Verification 2 - successful
+SELECT category, COUNT(*) AS drug_count
+FROM drug_category
+GROUP BY category
+ORDER BY drug_count DESC;
+
+--Write a query using the new table to find the total_day_supply and 
+--total_cost for each specialty/drug_category combination.
+--My code
+SELECT 
+	dc.category,
+	SUM(rx.total_drug_cost) AS total_cost,
+	SUM(rx.total_day_supply) AS total_supply,
+	TO_CHAR (
+		SUM(rx.total_drug_cost)::numeric
+		/SUM(rx.total_day_supply), 
+		'FM$999,999,999.00'
+	) AS cost_per_day
+FROM prescription rx
+JOIN drug_category dc
+	ON rx.drug_name = dc.generic_name
+GROUP BY dc.category
+ORDER BY cost_per_day DESC;
+
+--My prompt to Claude
+--I wrote a query that created a table and I want to see how you would write 
+--a query for the same purpose.
+--I want to create a table calculating the cost per day of drugs by category 
+--using the drug_category table we already created.
+--I did this by dividing the total_drug_cost by the total_supply. 
+--I want the resulting cost_per_day to be displayed in dollars.
+
+--Claude code (HIGH confidence)
+CREATE TABLE category_cost_per_day AS
+SELECT 
+    dc.category,
+    ROUND(
+        (SUM(pr.total_drug_cost) / NULLIF(SUM(pr.total_day_supply), 0))::NUMERIC, 
+        2
+    ) AS cost_per_day
+FROM prescription pr
+JOIN drug d ON pr.drug_name = d.drug_name
+JOIN drug_category dc ON d.generic_name = dc.generic_name
+GROUP BY dc.category
+ORDER BY cost_per_day DESC;
+
+SELECT *
+FROM category_cost_per_day;
+
+--VERY different results!
+--Mine shows Onocology $3.30 first
+--Claude shows Vaccines at 47.55 first (oncology is second at 36.56)
+--Clause suggests that my JOIN is problematic because the generic_name and the 
+--drug_name (from prescription) may not actually match.
